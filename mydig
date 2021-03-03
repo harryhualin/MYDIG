@@ -1,0 +1,65 @@
+import dns.name
+import dns.rdata
+import dns.message
+import dns.query
+import time
+import datetime
+
+
+def my_dig(domain, name_server):
+    request = dns.message.make_query(domain, dns.rdatatype.A)  # make a query request for A record
+    response = dns.query.udp(request, name_server)  # send query to nameserver
+
+    if response.answer:  # if anything in answer section
+        if response.answer[0].rdtype == 1:  # if 'A' record in answer section, print it
+            print(response.answer[0])
+        else:  # if 'cname' record in answer section, keep resolve it
+            print(response.answer[0])
+            cname = response.answer[0][0].to_text()
+            my_dig(cname, root_server)
+    else:  # Answer section has nothing
+        if response.additional:  # if some IP address in addition section
+            for x in response.additional:  # to find A record in addition section
+                if x.rdtype == 1:
+                    name_server = x[0].address
+            my_dig(domain, name_server)  # keep resolve it with next level name server
+        elif response.authority:  # only authority section has NS record.
+            ns = response.authority[0][0].target  # send the NS name to root server and resolve it
+            address = ns_address(ns, root_server)
+            my_dig(domain, address)
+
+
+# this function use same idea of my_dig to find NS's address when only NS record in authority
+def ns_address(ns, name_server):
+    request = dns.message.make_query(ns, dns.rdatatype.A)  # make a query request for A record
+    response = dns.query.udp(request, name_server)  # send query to nameserver
+    if response.answer:  # if anything in answer section
+        if response.answer[0].rdtype == 1:  # if 'A' record in answer section, return the ip address
+            return response.answer[0][0].to_text()
+        else:  # if 'cname' record in answer section, keep resolve it
+            cname = response.answer[0][0].to_text()
+            return ns_address(cname, root_server)
+    else:  # Answer section has nothing
+        if response.additional:  # if some IP address in addition section
+            for x in response.additional:  # to find A record in addition section
+                if x.rdtype == 1:
+                    name_server = x[0].address
+            return ns_address(ns, name_server)
+
+
+# main
+domainName = input('Enter a domain name: ')  # get domain name and root server address
+root_server = '198.41.0.4'
+print('QUESTION SECTION:')
+print(domainName + '  IN  A')
+print('ANSWER SECTION: ')
+domainName = dns.name.from_text(domainName)  # convert 'str' to dns.name.name
+
+date = datetime.datetime.now()              # when to query
+start_time = time.time()
+
+my_dig(domainName, root_server)
+
+query_time = round(time.time() - start_time, 3) * 100   # get how long to query
+print('Query time: ' + str(query_time) + 'msec')
+print('WHEN: ' + date.strftime("%c"))
